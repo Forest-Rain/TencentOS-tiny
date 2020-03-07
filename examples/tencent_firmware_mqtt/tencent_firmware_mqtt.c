@@ -1,4 +1,4 @@
-#include "tos.h"
+#include "tos_k.h"
 #include "esp8266_tencent_firmware.h"
 #include "tencent_firmware_module_wrapper.h"
 
@@ -13,6 +13,7 @@ void mqtt_demo_task(void)
     char *key = "ttOARy0PjYgzd9OSs4Z3RA==";
 
     device_info_t dev_info;
+    memset(&dev_info, 0, sizeof(device_info_t));
 
     esp8266_tencent_firmware_sal_init(HAL_UART_PORT_3);
     esp8266_tencent_firmware_join_ap("SheldonDai", "srnr6x9xbhmb0");

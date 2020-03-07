@@ -1,4 +1,4 @@
-#include "tos.h"
+#include "tos_k.h"
 #include "tickless/bsp_pm_device.h"
 #include "tickless/bsp_tickless_alarm.h"
 
@@ -19,7 +19,8 @@ int tos_bsp_tickless_setup(void)
     tos_tickless_wkup_alarm_init(TOS_LOW_POWER_MODE_STANDBY);
 
     tos_pm_cpu_lpwr_mode_set(TOS_LOW_POWER_MODE_SLEEP);
-    return 0;
 #endif
+
+    return 0;
 }
 

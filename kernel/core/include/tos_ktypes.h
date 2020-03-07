@@ -30,13 +30,19 @@ typedef uint8_t         k_nesting_t;
 typedef uint16_t        k_opt_t;
 typedef uint16_t        k_sem_cnt_t;
 typedef uint32_t        k_event_flag_t;
+typedef uint16_t        k_barrier_cnt_t;
 typedef uint16_t        k_countdownlatch_cnt_t;
 
 typedef uint32_t        k_time_t;
 typedef uint32_t        k_timeslice_t;
 
 typedef uint32_t        k_cycle_t;
+
+#if TOS_CFG_CPU_DATA_SIZE == CPU_WORD_SIZE_08
+typedef uint32_t        k_tick_t;
+#else
 typedef uint64_t        k_tick_t;
+#endif
 
 #define K_TRUE          (1u)
 #define K_FALSE         (0u)

@@ -15,7 +15,7 @@
  * within TencentOS.
  *---------------------------------------------------------------------------*/
 
-#include <tos.h>
+#include "tos_k.h"
 
 __API__ k_err_t tos_knl_init(void)
 {
@@ -152,13 +152,14 @@ __API__ k_err_t tos_knl_sched_unlock(void)
 
 __API__ k_err_t tos_knl_start(void)
 {
-    if (tos_knl_is_running()) {
+    if (unlikely(tos_knl_is_running())) {
         return K_ERR_KNL_RUNNING;
     }
 
     k_next_task = readyqueue_highest_ready_task_get();
     k_curr_task = k_next_task;
     k_knl_state = KNL_STATE_RUNNING;
+
     cpu_sched_start();
 
     return K_ERR_NONE;
@@ -176,7 +177,7 @@ __API__ int tos_knl_is_running(void)
  *
  * @return The remian ticks of the first oncoming task to be scheduled.
  */
-__KERNEL__ k_tick_t knl_next_expires_get(void)
+__KNL__ k_tick_t knl_next_expires_get(void)
 {
     k_tick_t tick_next_expires;
 #if TOS_CFG_TIMER_EN > 0u
@@ -198,57 +199,13 @@ __KERNEL__ k_tick_t knl_next_expires_get(void)
 
 #endif
 
-#if TOS_CFG_OBJECT_VERIFY_EN > 0u
-
-__KERNEL__ int knl_object_verify(knl_obj_t *knl_obj, knl_obj_type_t type)
-{
-    return knl_obj->type == type;
-}
-
-__KERNEL__ void knl_object_init(knl_obj_t *knl_obj, knl_obj_type_t type)
-{
-    knl_obj->type = type;
-}
-
-__KERNEL__ void knl_object_deinit(knl_obj_t *knl_obj)
-{
-    knl_obj->type = KNL_OBJ_TYPE_NONE;
-}
-
-#endif
-
-#if TOS_CFG_MMHEAP_EN > 0u
-
-__KERNEL__ void knl_object_alloc_reset(knl_obj_t *knl_obj)
-{
-    knl_obj->alloc_type = KNL_OBJ_ALLOC_TYPE_NONE;
-}
-
-__KERNEL__ void knl_object_alloc_set_dynamic(knl_obj_t *knl_obj)
-{
-    knl_obj->alloc_type = KNL_OBJ_ALLOC_TYPE_DYNAMIC;
-}
-
-__KERNEL__ void knl_object_alloc_set_static(knl_obj_t *knl_obj)
-{
-    knl_obj->alloc_type = KNL_OBJ_ALLOC_TYPE_STATIC;
-}
-
-__KERNEL__ int knl_object_alloc_is_dynamic(knl_obj_t *knl_obj)
-{
-    return knl_obj->alloc_type == KNL_OBJ_ALLOC_TYPE_DYNAMIC;
-}
-
-__KERNEL__ int knl_object_alloc_is_static(knl_obj_t *knl_obj)
-{
-    return knl_obj->alloc_type == KNL_OBJ_ALLOC_TYPE_STATIC;
-}
-
-#endif
-
-__KERNEL__ void knl_sched(void)
+__KNL__ void knl_sched(void)
 {
     TOS_CPU_CPSR_ALLOC();
+
+    if (unlikely(!tos_knl_is_running())) {
+        return;
+    }
 
     if (knl_is_inirq()) {
         return;
@@ -269,22 +226,22 @@ __KERNEL__ void knl_sched(void)
     TOS_CPU_INT_ENABLE();
 }
 
-__KERNEL__ int knl_is_sched_locked(void)
+__KNL__ int knl_is_sched_locked(void)
 {
     return k_sched_lock_nest_cnt > 0u;
 }
 
-__KERNEL__ int knl_is_inirq(void)
+__KNL__ int knl_is_inirq(void)
 {
     return k_irq_nest_cnt > 0u;
 }
 
-__KERNEL__ int knl_is_idle(k_task_t *task)
+__KNL__ int knl_is_idle(k_task_t *task)
 {
     return task == &k_idle_task;
 }
 
-__KERNEL__ int knl_is_self(k_task_t *task)
+__KNL__ int knl_is_self(k_task_t *task)
 {
     return task == k_curr_task;
 }
@@ -304,7 +261,7 @@ __STATIC__ void knl_idle_entry(void *arg)
     }
 }
 
-__KERNEL__ k_err_t knl_idle_init(void)
+__KNL__ k_err_t knl_idle_init(void)
 {
     return tos_task_create(&k_idle_task, "idle",
             knl_idle_entry, K_NULL,

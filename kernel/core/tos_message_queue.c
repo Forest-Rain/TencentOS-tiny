@@ -15,7 +15,7 @@
  * within TencentOS.
  *---------------------------------------------------------------------------*/
 
- #include "tos.h"
+ #include "tos_k.h"
 
 #if TOS_CFG_MESSAGE_QUEUE_EN > 0u
 
@@ -33,9 +33,7 @@ __API__ k_err_t tos_msg_q_create(k_msg_q_t *msg_q, void *pool, size_t msg_cnt)
 
     pend_object_init(&msg_q->pend_obj);
 
-#if TOS_CFG_OBJECT_VERIFY_EN > 0u
-    knl_object_init(&msg_q->knl_obj, KNL_OBJ_TYPE_MESSAGE_QUEUE);
-#endif
+    TOS_OBJ_INIT(msg_q, KNL_OBJ_TYPE_MESSAGE_QUEUE);
 #if TOS_CFG_MMHEAP_EN > 0u
     knl_object_alloc_set_static(&msg_q->knl_obj);
 #endif
@@ -65,15 +63,11 @@ __API__ k_err_t tos_msg_q_destroy(k_msg_q_t *msg_q)
         return err;
     }
 
-    if (!pend_is_nopending(&msg_q->pend_obj)) {
-        pend_wakeup_all(&msg_q->pend_obj, PEND_STATE_DESTROY);
-    }
+    pend_wakeup_all(&msg_q->pend_obj, PEND_STATE_DESTROY);
 
     pend_object_deinit(&msg_q->pend_obj);
 
-#if TOS_CFG_OBJECT_VERIFY_EN > 0u
-    knl_object_deinit(&msg_q->knl_obj);
-#endif
+    TOS_OBJ_DEINIT(msg_q);
 #if TOS_CFG_MMHEAP_EN > 0u
     knl_object_alloc_reset(&msg_q->knl_obj);
 #endif
@@ -99,9 +93,7 @@ __API__ k_err_t tos_msg_q_create_dyn(k_msg_q_t *msg_q, size_t msg_cnt)
 
     pend_object_init(&msg_q->pend_obj);
 
-#if TOS_CFG_OBJECT_VERIFY_EN > 0u
-    knl_object_init(&msg_q->knl_obj, KNL_OBJ_TYPE_MESSAGE_QUEUE);
-#endif
+    TOS_OBJ_INIT(msg_q, KNL_OBJ_TYPE_MESSAGE_QUEUE);
     knl_object_alloc_set_dynamic(&msg_q->knl_obj);
 
     return K_ERR_NONE;
@@ -127,15 +119,11 @@ __API__ k_err_t tos_msg_q_destroy_dyn(k_msg_q_t *msg_q)
         return err;
     }
 
-    if (!pend_is_nopending(&msg_q->pend_obj)) {
-        pend_wakeup_all(&msg_q->pend_obj, PEND_STATE_DESTROY);
-    }
+    pend_wakeup_all(&msg_q->pend_obj, PEND_STATE_DESTROY);
 
     pend_object_deinit(&msg_q->pend_obj);
 
-#if TOS_CFG_OBJECT_VERIFY_EN > 0u
-    knl_object_deinit(&msg_q->knl_obj);
-#endif
+    TOS_OBJ_DEINIT(msg_q);
     knl_object_alloc_reset(&msg_q->knl_obj);
 
     TOS_CPU_INT_ENABLE();
@@ -159,6 +147,7 @@ __API__ k_err_t tos_msg_q_pend(k_msg_q_t *msg_q, void **msg_ptr, k_tick_t timeou
     TOS_CPU_CPSR_ALLOC();
     k_err_t err;
 
+    TOS_IN_IRQ_CHECK();
     TOS_PTR_SANITY_CHECK(msg_q);
     TOS_PTR_SANITY_CHECK(msg_ptr);
     TOS_OBJ_VERIFY(msg_q, KNL_OBJ_TYPE_MESSAGE_QUEUE);
@@ -187,7 +176,6 @@ __API__ k_err_t tos_msg_q_pend(k_msg_q_t *msg_q, void **msg_ptr, k_tick_t timeou
     knl_sched();
 
     err = pend_state2errno(k_curr_task->pend_state);
-
     if (err == K_ERR_NONE) {
         *msg_ptr = k_curr_task->msg;
         k_curr_task->msg = K_NULL;
@@ -206,7 +194,7 @@ __STATIC__ k_err_t msg_q_do_post(k_msg_q_t *msg_q, void *msg_ptr, opt_post_t opt
 {
     TOS_CPU_CPSR_ALLOC();
     k_err_t err;
-    k_list_t *curr, *next;
+    k_task_t *task, *tmp;
 
     TOS_PTR_SANITY_CHECK(msg_q);
     TOS_OBJ_VERIFY(msg_q, KNL_OBJ_TYPE_MESSAGE_QUEUE);
@@ -226,8 +214,8 @@ __STATIC__ k_err_t msg_q_do_post(k_msg_q_t *msg_q, void *msg_ptr, opt_post_t opt
     if (opt == OPT_POST_ONE) {
         msg_q_task_recv(TOS_LIST_FIRST_ENTRY(&msg_q->pend_obj.list, k_task_t, pend_list), msg_ptr);
     } else { // OPT_POST_ALL
-        TOS_LIST_FOR_EACH_SAFE(curr, next, &msg_q->pend_obj.list) {
-            msg_q_task_recv(TOS_LIST_ENTRY(curr, k_task_t, pend_list), msg_ptr);
+        TOS_LIST_FOR_EACH_ENTRY_SAFE(task, tmp, k_task_t, pend_list, &msg_q->pend_obj.list) {
+            msg_q_task_recv(task, msg_ptr);
         }
     }
 

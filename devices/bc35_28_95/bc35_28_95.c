@@ -1,5 +1,5 @@
 #include "bc35_28_95.h"
-#include "tos.h"
+#include "tos_k.h"
 #include "tos_at.h"
 #include "tos_hal.h"
 #include "sal_module_wrapper.h"
@@ -246,7 +246,7 @@ static int bc35_28_95_signal_quality_check(void)
 
 static int bc35_28_95_init(void)
 {
-    printf("Init BC95_28_95 ...\n" );
+    printf("Init BC35_28_95 ...\n" );
 
     if (bc35_28_95_reset() != 0) {
         printf("reset FAILED\n");

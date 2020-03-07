@@ -1,4 +1,21 @@
-#include <tos.h>
+/*----------------------------------------------------------------------------
+ * Tencent is pleased to support the open source community by making TencentOS
+ * available.
+ *
+ * Copyright (C) 2019 THL A29 Limited, a Tencent company. All rights reserved.
+ * If you have downloaded a copy of the TencentOS binary from Tencent, please
+ * note that the TencentOS binary is licensed under the BSD 3-Clause License.
+ *
+ * If you have downloaded a copy of the TencentOS source code from Tencent,
+ * please note that TencentOS source code is licensed under the BSD 3-Clause
+ * License, except for the third-party components listed below which are
+ * subject to different license terms. Your integration of TencentOS into your
+ * own projects may require compliance with the BSD 3-Clause License, as well
+ * as the other licenses applicable to the third-party components included
+ * within TencentOS.
+ *---------------------------------------------------------------------------*/
+
+#include <tos_k.h>
 
 uint8_t irq_context_switch_flag = 0;
 
@@ -61,32 +78,32 @@ __API__ void tos_cpu_cpsr_restore(cpu_cpsr_t cpsr)
     port_cpsr_restore(cpsr);
 }
 
-__KERNEL__ void cpu_init(void)
+__KNL__ void cpu_init(void)
 {
 
 }
 
-__KERNEL__ void cpu_reset(void)
+__KNL__ void cpu_reset(void)
 {
     port_cpu_reset();
 }
 
-__KERNEL__ void cpu_sched_start(void)
+__KNL__ void cpu_sched_start(void)
 {
     port_sched_start();
 }
 
-__KERNEL__ void cpu_context_switch(void)
+__KNL__ void cpu_context_switch(void)
 {
     port_context_switch();
 }
 
-__KERNEL__ void cpu_irq_context_switch(void)
+__KNL__ void cpu_irq_context_switch(void)
 {
     irq_context_switch_flag = 1;//port_irq_context_switch();
 }
 
-__KERNEL__ void cpu_systick_init(k_cycle_t cycle_per_tick)
+__KNL__ void cpu_systick_init(k_cycle_t cycle_per_tick)
 {
     port_systick_priority_set(TOS_CFG_CPU_SYSTICK_PRIO);
     port_systick_config(cycle_per_tick);
@@ -111,7 +128,7 @@ __STATIC_INLINE__ void cpu_systick_reload(k_cycle_t cycle_per_tick)
  *
  * @return None
  */
-__KERNEL__ void cpu_systick_resume(void)
+__KNL__ void cpu_systick_resume(void)
 {
     port_systick_resume();
 }
@@ -121,17 +138,17 @@ __KERNEL__ void cpu_systick_resume(void)
  *
  * @return None
  */
-__KERNEL__ void cpu_systick_suspend(void)
+__KNL__ void cpu_systick_suspend(void)
 {
     port_systick_suspend();
 }
 
-__KERNEL__ k_time_t cpu_systick_max_delay_millisecond(void)
+__KNL__ k_time_t cpu_systick_max_delay_millisecond(void)
 {
     return port_systick_max_delay_millisecond();
 }
 
-__KERNEL__ void cpu_systick_expires_set(k_time_t millisecond)
+__KNL__ void cpu_systick_expires_set(k_time_t millisecond)
 {
     k_cycle_t cycles;
 
@@ -140,12 +157,12 @@ __KERNEL__ void cpu_systick_expires_set(k_time_t millisecond)
     cpu_systick_reload(cycles - 12); /* interrupt delay */
 }
 
-__KERNEL__ void cpu_systick_pending_reset(void)
+__KNL__ void cpu_systick_pending_reset(void)
 {
     port_systick_pending_reset();
 }
 
-__KERNEL__ void cpu_systick_reset(void)
+__KNL__ void cpu_systick_reset(void)
 {
     cpu_systick_reload(k_cpu_cycle_per_tick);
 }
@@ -154,25 +171,25 @@ __KERNEL__ void cpu_systick_reset(void)
 
 #if TOS_CFG_PWR_MGR_EN > 0u
 
-__KERNEL__ void cpu_sleep_mode_enter(void)
+__KNL__ void cpu_sleep_mode_enter(void)
 {
     __bis_SR_register( LPM4_bits + GIE );
     __no_operation();
 }
 
-__KERNEL__ void cpu_stop_mode_enter(void)
+__KNL__ void cpu_stop_mode_enter(void)
 {
 
 }
 
-__KERNEL__ void cpu_standby_mode_enter(void)
+__KNL__ void cpu_standby_mode_enter(void)
 {
 
 }
 
 #endif /* TOS_CFG_PWR_MGR_EN */
 
-__KERNEL__ k_stack_t *cpu_task_stk_init(void *entry,
+__KNL__ k_stack_t *cpu_task_stk_init(void *entry,
                                               void *arg,
                                               void *exit,
                                               k_stack_t *stk_base,
@@ -183,12 +200,12 @@ __KERNEL__ k_stack_t *cpu_task_stk_init(void *entry,
     uint32_t *pul_top_of_stack;
 
     #define PORT_BYTE_ALIGNMENT_MASK	( 0x0001 )
-    
+
     /* The stack type changes depending on the data model. */
 
     sp = (cpu_data_t *)&( stk_base[ stk_size - ( uint32_t ) 1 ] );
-    sp = ( cpu_data_t * ) ( ( ( cpu_data_t ) sp ) & ( ~( ( cpu_data_t ) PORT_BYTE_ALIGNMENT_MASK ) ) ); 
-    
+    sp = ( cpu_data_t * ) ( ( ( cpu_data_t ) sp ) & ( ~( ( cpu_data_t ) PORT_BYTE_ALIGNMENT_MASK ) ) );
+
     /* cpu_data_t is either 16 bits or 32 bits depending on the data model.
     Some stacked items do not change size depending on the data model so have
     to be explicitly cast to the correct size so this function will work
@@ -207,20 +224,20 @@ __KERNEL__ k_stack_t *cpu_task_stk_init(void *entry,
     }
 
     /* PC - Interrupt return pointer */
-    *pul_top_of_stack = ( uint32_t ) entry;           
-        
+    *pul_top_of_stack = ( uint32_t ) entry;
+
     pus_top_of_stack = ( uint16_t * ) pul_top_of_stack;
     pus_top_of_stack--;
-    
+
     /* R2 - SR.GIE - bit8,golbal interrupt enable */
     *pus_top_of_stack = 0x08;
-    /* SR size is 16-bits */                       
+    /* SR size is 16-bits */
     pus_top_of_stack -= ( sizeof( cpu_data_t ) / 2 );
-    
+
 
     /* From here on the size of stacked items depends on the memory model. */
     sp = ( cpu_data_t * ) pus_top_of_stack;
-    
+
 #if 0 // enable for debug
     *sp = ( cpu_data_t ) 0xffff;
     sp--;
@@ -237,7 +254,7 @@ __KERNEL__ k_stack_t *cpu_task_stk_init(void *entry,
     *sp = ( cpu_data_t ) 0x9999;
     sp--;
     *sp = ( cpu_data_t ) 0x8888;
-    sp--;	
+    sp--;
     *sp = ( cpu_data_t ) 0x5555;
     sp--;
     *sp = ( cpu_data_t ) 0x6666;
@@ -249,14 +266,14 @@ __KERNEL__ k_stack_t *cpu_task_stk_init(void *entry,
     sp -= 3;
     *sp = ( cpu_data_t ) arg;
     sp -= 8;// R11-R4
-#endif   
-        
+#endif
+
     return (k_stack_t *)sp;
 }
 
 #if TOS_CFG_TASK_STACK_DRAUGHT_DEPTH_DETACT_EN > 0u
 
-__KERNEL__ k_err_t cpu_task_stack_draught_depth(k_stack_t *stk_base, size_t stk_size, int *depth)
+__KNL__ k_err_t cpu_task_stack_draught_depth(k_stack_t *stk_base, size_t stk_size, int *depth)
 {
     uint8_t *slot;
     uint8_t *sp, *bp;
@@ -285,7 +302,7 @@ __KERNEL__ k_err_t cpu_task_stack_draught_depth(k_stack_t *stk_base, size_t stk_
 
 #if TOS_CFG_FAULT_BACKTRACE_EN > 0u
 
-__KERNEL__ void cpu_fault_diagnosis(void)
+__KNL__ void cpu_fault_diagnosis(void)
 {
     port_fault_diagnosis();
 }

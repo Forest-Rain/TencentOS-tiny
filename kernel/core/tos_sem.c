@@ -15,7 +15,7 @@
  * within TencentOS.
  *---------------------------------------------------------------------------*/
 
-#include "tos.h"
+#include "tos_k.h"
 
 #if TOS_CFG_SEM_EN > 0u
 
@@ -23,13 +23,10 @@ __API__ k_err_t tos_sem_create_max(k_sem_t *sem, k_sem_cnt_t init_count, k_sem_c
 {
     TOS_PTR_SANITY_CHECK(sem);
 
-#if TOS_CFG_OBJECT_VERIFY_EN > 0u
-    knl_object_init(&sem->knl_obj, KNL_OBJ_TYPE_SEMAPHORE);
-#endif
-
-    pend_object_init(&sem->pend_obj);
     sem->count      = init_count;
     sem->count_max  = max_count;
+    pend_object_init(&sem->pend_obj);
+    TOS_OBJ_INIT(sem, KNL_OBJ_TYPE_SEMAPHORE);
 
     return K_ERR_NONE;
 }
@@ -48,15 +45,11 @@ __API__ k_err_t tos_sem_destroy(k_sem_t *sem)
 
     TOS_CPU_INT_DISABLE();
 
-    if (!pend_is_nopending(&sem->pend_obj)) {
-        pend_wakeup_all(&sem->pend_obj, PEND_STATE_DESTROY);
-    }
+    pend_wakeup_all(&sem->pend_obj, PEND_STATE_DESTROY);
 
     pend_object_deinit(&sem->pend_obj);
 
-#if TOS_CFG_OBJECT_VERIFY_EN > 0u
-    knl_object_deinit(&sem->knl_obj);
-#endif
+    TOS_OBJ_DEINIT(sem);
 
     TOS_CPU_INT_ENABLE();
     knl_sched();
@@ -106,6 +99,7 @@ __API__ k_err_t tos_sem_pend(k_sem_t *sem, k_tick_t timeout)
 {
     TOS_CPU_CPSR_ALLOC();
 
+    TOS_IN_IRQ_CHECK();
     TOS_PTR_SANITY_CHECK(sem);
     TOS_OBJ_VERIFY(sem, KNL_OBJ_TYPE_SEMAPHORE);
 
@@ -120,11 +114,6 @@ __API__ k_err_t tos_sem_pend(k_sem_t *sem, k_tick_t timeout)
     if (timeout == TOS_TIME_NOWAIT) { // no wait, return immediately
         TOS_CPU_INT_ENABLE();
         return K_ERR_PEND_NOWAIT;
-    }
-
-    if (knl_is_inirq()) {
-        TOS_CPU_INT_ENABLE();
-        return K_ERR_PEND_IN_IRQ;
     }
 
     if (knl_is_sched_locked()) {

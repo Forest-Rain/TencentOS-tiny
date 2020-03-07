@@ -15,14 +15,10 @@
  * within TencentOS.
  *---------------------------------------------------------------------------*/
 
-#include <tos.h>
+#include "tos_k.h"
 
 __STATIC_INLINE__ void task_reset(k_task_t *task)
 {
-#if TOS_CFG_OBJECT_VERIFY_EN > 0u
-    knl_object_deinit(&task->knl_obj);
-#endif
-
 #if TOS_CFG_TASK_DYNAMIC_CREATE_EN > 0u
     knl_object_alloc_reset(&task->knl_obj);
 
@@ -49,6 +45,7 @@ __STATIC_INLINE__ void task_reset(k_task_t *task)
     task->mail_size     = 0;
 #endif
 
+    TOS_OBJ_DEINIT(task);
 }
 
 __STATIC__ void task_exit(void)
@@ -59,26 +56,25 @@ __STATIC__ void task_exit(void)
 #if TOS_CFG_MUTEX_EN > 0u
 __STATIC__ k_prio_t task_highest_pending_prio_get(k_task_t *task)
 {
-    k_list_t *curr;
     k_mutex_t *mutex;
     k_prio_t prio, highest_prio_pending = K_TASK_PRIO_INVALID;
 
-    TOS_LIST_FOR_EACH(curr, &task->mutex_own_list) {
-        mutex   = TOS_LIST_ENTRY(curr, k_mutex_t, owner_anchor);
-        prio    = pend_highest_pending_prio_get(&mutex->pend_obj);
+    TOS_LIST_FOR_EACH_ENTRY(mutex, k_mutex_t, owner_anchor, &task->mutex_own_list) {
+        prio = pend_highest_pending_prio_get(&mutex->pend_obj);
         if (prio < highest_prio_pending) {
             highest_prio_pending = prio;
         }
     }
+
     return highest_prio_pending;
 }
 
 __STATIC__ void task_mutex_release(k_task_t *task)
 {
-    k_list_t *curr, *next;
+    k_mutex_t *mutex, *tmp;
 
-    TOS_LIST_FOR_EACH_SAFE(curr, next, &task->mutex_own_list) {
-        mutex_release(TOS_LIST_ENTRY(curr, k_mutex_t, owner_anchor));
+    TOS_LIST_FOR_EACH_ENTRY_SAFE(mutex, tmp, k_mutex_t, owner_anchor, &task->mutex_own_list) {
+        mutex_release(mutex);
     }
 }
 #endif
@@ -100,7 +96,10 @@ __API__ k_err_t tos_task_create(k_task_t *task,
     TOS_PTR_SANITY_CHECK(entry);
     TOS_PTR_SANITY_CHECK(stk_base);
 
-    if (unlikely(stk_size < sizeof(cpu_context_t))) {
+    /* try to re-create a task, kind of dangerous */
+    TOS_OBJ_TEST_RC(task, KNL_OBJ_TYPE_TASK, K_ERR_TASK_ALREADY_CREATED);
+
+    if (unlikely(stk_size < K_TASK_STK_SIZE_MIN)) {
         return K_ERR_TASK_STK_SIZE_INVALID;
     }
 
@@ -115,10 +114,7 @@ __API__ k_err_t tos_task_create(k_task_t *task,
     task_reset(task);
     tos_list_add(&task->stat_list, &k_stat_list);
 
-#if TOS_CFG_OBJECT_VERIFY_EN > 0u
-    knl_object_init(&task->knl_obj, KNL_OBJ_TYPE_TASK);
-#endif
-
+    TOS_OBJ_INIT(task, KNL_OBJ_TYPE_TASK);
 #if TOS_CFG_TASK_DYNAMIC_CREATE_EN > 0u
     knl_object_alloc_set_static(&task->knl_obj);
 #endif
@@ -126,10 +122,10 @@ __API__ k_err_t tos_task_create(k_task_t *task,
     task->sp        = cpu_task_stk_init((void *)entry, arg, (void *)task_exit, stk_base, stk_size);
     task->entry     = entry;
     task->arg       = arg;
-    task->name      = name;
     task->prio      = prio;
     task->stk_base  = stk_base;
     task->stk_size  = stk_size;
+    strncpy(task->name, name, K_TASK_NAME_MAX);
 
 #if TOS_CFG_ROUND_ROBIN_EN > 0u
     task->timeslice_reload = timeslice;
@@ -191,21 +187,9 @@ __STATIC__ k_err_t task_do_destroy(k_task_t *task)
     return K_ERR_NONE;
 }
 
-__API__ k_err_t tos_task_destroy(k_task_t *task)
+__STATIC__ k_err_t task_destroy_static(k_task_t *task)
 {
-    TOS_IN_IRQ_CHECK();
-
-    if (unlikely(!task)) {
-        task = k_curr_task;
-    }
-
-    TOS_OBJ_VERIFY(task, KNL_OBJ_TYPE_TASK);
-
-    if (knl_is_self(task) && knl_is_sched_locked()) {
-        return K_ERR_SCHED_LOCKED;
-    }
-
-#if TOS_CFG_TASK_DYNAMIC_CREATE_EN
+#if TOS_CFG_TASK_DYNAMIC_CREATE_EN > 0u
     if (!knl_object_alloc_is_static(&task->knl_obj)) {
         return K_ERR_OBJ_INVALID_ALLOC_TYPE;
     }
@@ -222,16 +206,14 @@ __STATIC__ void task_free(k_task_t *task)
     tos_mmheap_free(task);
 }
 
-__KERNEL__ void task_free_all(void)
+__KNL__ void task_free_all(void)
 {
     TOS_CPU_CPSR_ALLOC();
-    k_task_t *task;
-    k_list_t *curr, *next;
+    k_task_t *task, *tmp;
 
     TOS_CPU_INT_DISABLE();
 
-    TOS_LIST_FOR_EACH_SAFE(curr, next, &k_dead_task_list) {
-        task = TOS_LIST_ENTRY(curr, k_task_t, dead_list);
+    TOS_LIST_FOR_EACH_ENTRY_SAFE(task, tmp, k_task_t, dead_list, &k_dead_task_list) {
         tos_list_del(&task->dead_list);
         task_free(task);
     }
@@ -293,25 +275,9 @@ __API__ k_err_t tos_task_create_dyn(k_task_t **task,
     return K_ERR_NONE;
 }
 
-__API__ k_err_t tos_task_destroy_dyn(k_task_t *task)
+__STATIC__ k_err_t task_destroy_dyn(k_task_t *task)
 {
     k_err_t err;
-
-    TOS_IN_IRQ_CHECK();
-
-    if (unlikely(!task)) {
-        task = k_curr_task;
-    }
-
-    TOS_OBJ_VERIFY(task, KNL_OBJ_TYPE_TASK);
-
-    if (knl_is_self(task) && knl_is_sched_locked()) {
-        return K_ERR_SCHED_LOCKED;
-    }
-
-    if (!knl_object_alloc_is_dynamic(&task->knl_obj)) {
-        return K_ERR_OBJ_INVALID_ALLOC_TYPE;
-    }
 
     tos_knl_sched_lock();
 
@@ -335,6 +301,29 @@ __API__ k_err_t tos_task_destroy_dyn(k_task_t *task)
 }
 
 #endif
+
+__API__ k_err_t tos_task_destroy(k_task_t *task)
+{
+    TOS_IN_IRQ_CHECK();
+
+    if (unlikely(!task)) {
+        task = k_curr_task;
+    }
+
+    TOS_OBJ_VERIFY(task, KNL_OBJ_TYPE_TASK);
+
+    if (knl_is_self(task) && knl_is_sched_locked()) {
+        return K_ERR_SCHED_LOCKED;
+    }
+
+#if TOS_CFG_TASK_DYNAMIC_CREATE_EN > 0u
+    if (knl_object_alloc_is_dynamic(&task->knl_obj)) {
+        return task_destroy_dyn(task);
+    }
+#endif
+
+    return task_destroy_static(task);
+}
 
 __API__ void tos_task_yield(void)
 {
@@ -488,14 +477,14 @@ __API__ k_err_t tos_task_delay(k_tick_t delay)
         return K_ERR_NONE;
     }
 
-    TOS_CPU_INT_DISABLE();
-
-    if (tick_list_add(k_curr_task, delay) != K_ERR_NONE) {
-        TOS_CPU_INT_ENABLE();
+    if (unlikely(delay == TOS_TIME_FOREVER)) {
         // if you wanna delay your task forever, why don't just suspend?
         return K_ERR_DELAY_FOREVER;
     }
 
+    TOS_CPU_INT_DISABLE();
+
+    tick_list_add(k_curr_task, delay);
     readyqueue_remove(k_curr_task);
 
     TOS_CPU_INT_ENABLE();
@@ -547,11 +536,10 @@ __API__ k_task_t *tos_task_curr_task_get(void)
     return curr_task;
 }
 
-__API__ void tos_task_walkthru(k_task_walker walker)
+__API__ void tos_task_walkthru(k_task_walker_t walker)
 {
     TOS_CPU_CPSR_ALLOC();
     k_task_t *task;
-    k_list_t *curr;
 
     if (!walker) {
         return;
@@ -559,8 +547,7 @@ __API__ void tos_task_walkthru(k_task_walker walker)
 
     TOS_CPU_INT_DISABLE();
 
-    TOS_LIST_FOR_EACH(curr, &k_stat_list) {
-        task = TOS_LIST_ENTRY(curr, k_task_t, stat_list);
+    TOS_LIST_FOR_EACH_ENTRY(task, k_task_t, stat_list, &k_stat_list) {
         walker(task);
     }
 
