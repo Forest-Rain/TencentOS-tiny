@@ -21,7 +21,7 @@
 #include <stdint.h>
 #include <stdio.h>
 
-typedef enum sal_proto_en {
+typedef enum sal_protocol_en {
     TOS_SAL_PROTO_TCP,
     TOS_SAL_PROTO_UDP,
 } sal_proto_t;
@@ -62,6 +62,17 @@ typedef struct sal_module_st {
  * @return  errcode
  */
 int tos_sal_module_register(sal_module_t *module);
+
+/**
+ * @brief Register a default sal module.
+ *
+ * @attention None
+ *
+ * @param[in] None
+ *
+ * @return  errcode
+ */
+int tos_sal_module_register_default(void);
 
 /**
  * @brief Initialize the module.

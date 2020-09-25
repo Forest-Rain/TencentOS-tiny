@@ -33,5 +33,7 @@
 
 #define TOS_CFG_TIMER_AS_PROC           1u
 
+#define TOS_CFG_FAULT_BACKTRACE_EN      0u        // 配置TencentOS tiny是否开启异常栈回溯功能
+
 #endif
 

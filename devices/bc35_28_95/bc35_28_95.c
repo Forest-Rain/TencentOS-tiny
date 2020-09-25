@@ -145,6 +145,10 @@ static int bc35_28_95_parse_domain(const char *host_name, char *host_ip, size_t 
      */
 
     str = strstr((const char *)echo.buffer, "+QDNS:");
+    if (!str) 
+    {
+        return -1;
+    }
     sscanf(str, "+QDNS:%s", host_ip);
     host_ip[host_ip_len - 1] = '\0';
     printf("GOT IP: %s\n", host_ip);
@@ -236,6 +240,10 @@ static int bc35_28_95_signal_quality_check(void)
     }
 
     str = strstr(echo.buffer, "+CSQ:");
+    if (!str) 
+    {
+        return -1;
+    }
     sscanf(str, "+CSQ:%d,%d", &rssi, &ber);
     if (rssi == 99) {
         return -1;
@@ -357,9 +365,9 @@ __STATIC__ void bc35_28_95_incoming_data_process(void)
         we cannot use tos_at_cmd_exec(NULL, timeout) to delay, because we are in at framework's parser
         task now(current function is a callback called by parser task), delay in tos_at_cmd_exec is
         tos_task_delay, this may cause a task switch, data receiving may be interrupted.
-        so we must tos_at_cmd_exec(NULL, 0), and do the delay by at_delay_ms.
+        so we must tos_at_cmd_exec(NULL, 0), and do the delay by tos_stopwatch_delay_ms.
      */
-    at_delay_ms(1000);
+    tos_stopwatch_delay_ms(1000);
 
     /*
     1,xxx.yyy.zzz.www,8000,3,010203,0\r\n

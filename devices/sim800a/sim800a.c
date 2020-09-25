@@ -32,6 +32,10 @@ static int sim800a_signal_quality_check(void)
     }
 
     str = strstr(echo.buffer, "+CSQ:");
+    if (!str) 
+    {
+        return -1;
+    }
     sscanf(str, "+CSQ:%d,%d", &rssi, &ber);
     if (rssi == 99 || ber == 99) {
         return -1;
@@ -245,6 +249,10 @@ static int sim800a_parse_domain(const char *host_name, char *host_ip, size_t hos
 
     int seg1, seg2, seg3, seg4;
     str = strstr(echo.buffer, "+CDNSGIP: 1,");
+    if (!str) 
+    {
+        return -1;
+    }
     str += strlen("+CDNSGIP: 1,\"") + strlen(host_name) + 3;
     sscanf(str, "%d.%d.%d.%d", &seg1, &seg2, &seg3, &seg4);
     snprintf(host_ip, host_ip_len, "%d.%d.%d.%d", seg1, seg2, seg3, seg4);
@@ -255,12 +263,11 @@ static int sim800a_parse_domain(const char *host_name, char *host_ip, size_t hos
     return 0;
 }
 
-__STATIC__ uint8_t incoming_data_buffer[512];
-
 __STATIC__ void sim800a_incoming_data_process(void)
 {
     uint8_t data;
-    int channel_id = 0, data_len = 0;
+    int channel_id = 0, data_len = 0, read_len;
+    static uint8_t buffer[128];
 
     /*
     +IPD,0,44:1234...
@@ -291,15 +298,19 @@ __STATIC__ void sim800a_incoming_data_process(void)
         data_len = data_len * 10 + (data - '0');
     }
 
-    if (data_len > sizeof(incoming_data_buffer)) {
-        data_len = sizeof(incoming_data_buffer);
-    }
+    do {
+#define MIN(a, b)   ((a) < (b) ? (a) : (b))
+        read_len = MIN(data_len, sizeof(buffer));
+        if (tos_at_uart_read(buffer, read_len) != read_len) {
+            return;
+        }
 
-    if (tos_at_uart_read(incoming_data_buffer, data_len) != data_len) {
-        return;
-    }
+        if (tos_at_channel_write(channel_id, buffer, read_len) <= 0) {
+            return;
+        }
 
-    tos_at_channel_write(channel_id, incoming_data_buffer, data_len);
+        data_len -= read_len;
+    } while (data_len > 0);
 }
 
 at_event_t sim800a_at_event[] = {
